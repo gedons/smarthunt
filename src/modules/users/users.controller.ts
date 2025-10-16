@@ -15,6 +15,8 @@ import { memoryStorage } from 'multer';
 import { UsersService } from './users.service';
 import { CloudinaryService } from '../files/cloudinary.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { RolesGuard } from '../../common/guards/roles.guard';
 
 @Controller('auth')
 export class UsersController {
@@ -23,16 +25,18 @@ export class UsersController {
     private cloudinary: CloudinaryService,
   ) {}
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Get('me')
+  @Roles('USER')
   async me(
     @CurrentUser() user: { auth0Id: string; email?: string; name?: string },
   ) {
     return this.usersService.findOrCreateFromAuth0(user);
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Patch('me')
+  @Roles('USER')
   async updateMe(
     @CurrentUser() user: { auth0Id: string },
     @Body() body: { name?: string; skills?: string[]; preferences?: any },
@@ -41,8 +45,9 @@ export class UsersController {
   }
 
   // Resume upload: file field name = "file"
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Post('me/resume')
+  @Roles('USER')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   async uploadResume(
     @CurrentUser() user: { auth0Id: string },
