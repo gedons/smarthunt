@@ -1,8 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import envConfig from './config/env.config';
+
 import { PrismaService } from './config/prisma.service';
-import { AppController } from './app.controller';
+import { JobsModule } from './modules/jobs/jobs.module';
+import { QueueModule } from './modules/queue/queue.module';
 
 @Module({
   imports: [
@@ -10,9 +13,11 @@ import { AppController } from './app.controller';
       isGlobal: true,
       load: [envConfig],
     }),
+    ScheduleModule.forRoot(),
+    JobsModule,
+    QueueModule,
   ],
-  controllers: [AppController],
+  controllers: [],
   providers: [PrismaService],
-  exports: [PrismaService],
 })
 export class AppModule {}

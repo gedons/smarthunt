@@ -21,14 +21,29 @@ model User {
   name      String?
   createdAt DateTime @default(now())
 }
-
 model Job {
-  id          String   @id @default(cuid())
-  title       String
-  company     String
-  location    String?
-  salary      String?
-  description String?
-  link        String?
-  createdAt   DateTime @default(now())
+  id           String   @id @default(cuid())
+  title        String
+  company      String?
+  location     String?
+  remote       Boolean  @default(false)
+  url          String   @unique
+  description  String?  @db.Text
+  tags         String[] @default([])
+  salary       String?
+  source       JobSource
+  sourceId     String?
+  scrapedAt    DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([source, url])
+}
+
+enum JobSource {
+  REMOTEOK
+  WEWORKREMOTELY
+  WELLFOUND
+  INDEED
+  UNKNOWN
 }
