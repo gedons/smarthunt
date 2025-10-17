@@ -8,6 +8,7 @@ import {
   Post,
   UploadedFile,
   UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -17,11 +18,14 @@ import { CloudinaryService } from '../files/cloudinary.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { resumeFileFilter } from 'src/common/multer/resume-filter';
+import { ResumeService } from '../files/resume.service';
 
 @Controller('auth')
 export class UsersController {
   constructor(
     private usersService: UsersService,
+    private resumeService: ResumeService,
     private cloudinary: CloudinaryService,
   ) {}
 
@@ -45,23 +49,37 @@ export class UsersController {
   }
 
   // Resume upload: file field name = "file"
-  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @UseGuards(AuthGuard('jwt'))
   @Post('me/resume')
-  @Roles('USER')
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 6 * 1024 * 1024 },
+      fileFilter: resumeFileFilter,
+    }),
+  )
   async uploadResume(
     @CurrentUser() user: { auth0Id: string },
     @UploadedFile() file: Express.Multer.File,
   ) {
-    if (!file) {
-      throw new Error('No file provided');
-    }
+    if (!file) throw new BadRequestException('No file provided');
+
+    // upload to cloudinary
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const upload = await this.cloudinary.uploadBuffer(file.buffer, file.originalname);
-    // upload.secure_url (Cloudinary response)
-    const saved = await this.usersService.updateResumeUrl(
+
+    // extract text
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const resumeText = await this.resumeService.extractText(file.buffer, file.mimetype);
+
+    // save both url and extracted text
+    const updated = await this.usersService.updateResumeAndText(
       user.auth0Id,
       upload.secure_url,
+      resumeText,
     );
-    return saved;
+
+    return updated;
   }
+
 }

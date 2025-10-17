@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { LoggerModule } from 'nestjs-pino';
 import envConfig from './config/env.config';
 
 import { PrismaService } from './config/prisma.service';
@@ -16,6 +17,15 @@ import { DatabaseModule } from './modules/database/database.module';
     ConfigModule.forRoot({
       isGlobal: true,
       load: [envConfig],
+    }),
+    LoggerModule.forRoot({
+      pinoHttp: {
+        level: process.env.LOG_LEVEL || 'info',
+        transport:
+          process.env.NODE_ENV !== 'production'
+            ? { target: 'pino-pretty', options: { colorize: true } }
+            : undefined,
+      },
     }),
     ScheduleModule.forRoot(),
     JobsModule,

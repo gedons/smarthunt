@@ -22,6 +22,7 @@ model User {
   name          String?
   avatarUrl     String?
   resumeUrl     String?
+  resumeText    String?  
   skills        String[]  @default([])
   preferences   Json?
   role          UserRole  @default(USER)
@@ -36,7 +37,7 @@ model Job {
   company      String?
   location     String?
   remote       Boolean  @default(false)
-  url          String   @unique
+  url          String   @unique   
   description  String?  @db.Text
   tags         String[] @default([])
   salary       String?

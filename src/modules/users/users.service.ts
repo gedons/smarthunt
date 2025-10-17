@@ -53,4 +53,15 @@ export class UsersService {
       data: { resumeUrl },
     });
   }
+
+  async updateResumeAndText(
+    auth0Id: string,
+    resumeUrl: string,
+    resumeText: string,
+  ) {
+    return this.prisma.user.update({
+      where: { auth0Id },
+      data: { resumeUrl, resumeText },
+    });
+  }
 }
