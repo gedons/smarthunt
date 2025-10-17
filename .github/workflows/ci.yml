@@ -28,7 +28,7 @@ jobs:
         with:
           node-version: 20
       - name: Install deps
-        run: npm ci
+        run: npm ci --legacy-peer-deps
       - name: Wait for Postgres
         run: sleep 5
       - name: Generate Prisma client & run migrations

@@ -48,8 +48,7 @@ export class UsersController {
     return this.usersService.updateProfile(user.auth0Id, body);
   }
 
-  // Resume upload: file field name = "file"
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Post('me/resume')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -64,22 +63,42 @@ export class UsersController {
   ) {
     if (!file) throw new BadRequestException('No file provided');
 
-    // upload to cloudinary
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const upload = await this.cloudinary.uploadBuffer(file.buffer, file.originalname);
-
-    // extract text
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const resumeText = await this.resumeService.extractText(file.buffer, file.mimetype);
-
-    // save both url and extracted text
-    const updated = await this.usersService.updateResumeAndText(
-      user.auth0Id,
-      upload.secure_url,
-      resumeText,
+    console.log(
+      '[uploadResume] file.mimetype=',
+      file.mimetype,
+      'size=',
+      file.size,
+      'originalname=',
+      file.originalname,
     );
 
-    return updated;
-  }
+    // upload to cloudinary
+    const upload = await this.cloudinary.uploadBuffer(file.buffer, file.originalname);
+    console.log('[uploadResume] uploaded to Cloudinary:', upload?.secure_url);
 
+    // extract text
+    const resumeText = await this.resumeService.extractText(file.buffer, file.mimetype);
+    console.log('[uploadResume] extracted text length=', resumeText?.length);
+
+    // return the text in the response and persist it
+    const updated = await this.usersService.updateResumeAndText(user.auth0Id, upload.secure_url, resumeText ?? '');
+
+    console.log(
+      '[uploadResume] DB update result auth0Id=',
+      updated.auth0Id,
+      'resumeUrl=',
+      updated.resumeUrl,
+      'resumeTextLength=',
+      (updated.resumeText || '').length,
+    );
+
+    // return extracted text immediately for debugging (remove in prod)
+    return {
+      ok: true,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      resumeUrl: upload?.secure_url,
+      resumeTextLength: resumeText?.length ?? 0,
+      resumeTextSnippet: resumeText?.slice(0, 500) ?? '',
+    };
+  }
 }
