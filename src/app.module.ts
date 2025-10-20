@@ -11,6 +11,7 @@ import { QueueModule } from './modules/queue/queue.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { DatabaseModule } from './modules/database/database.module';
+import { AiModule } from './modules/ai/ai.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { DatabaseModule } from './modules/database/database.module';
     AuthModule,
     UsersModule,
     DatabaseModule,
+    AiModule,
   ],
   controllers: [],
   providers: [PrismaService],

@@ -23,6 +23,7 @@ model User {
   avatarUrl     String?
   resumeUrl     String?
   resumeText    String?  
+  vector        Float[] @default([])
   skills        String[]  @default([])
   preferences   Json?
   role          UserRole  @default(USER)
@@ -46,6 +47,7 @@ model Job {
   scrapedAt    DateTime @default(now())
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  embedding    JobEmbedding?
 
   @@unique([source, url])
 }
@@ -60,8 +62,18 @@ model Application {
   coverLetter   String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @default(now()) @updatedAt
-  user          User     @relation(fields: [userId], references: [id])
+  user          User @relation(fields: [userId], references: [id])
 }
+
+model JobEmbedding {
+  id        String   @id @default(cuid())
+  jobId     String   @unique
+  embedding Float[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  job       Job @relation(fields: [jobId], references: [id])
+}
+
 
 enum UserRole {
   USER
