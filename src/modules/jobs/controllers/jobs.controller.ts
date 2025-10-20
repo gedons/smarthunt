@@ -34,6 +34,7 @@ export class JobsController {
   
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Get('recommended')
+  @Roles('USER')
   async recommended(@Req() req, @Query('page') page = '0', @Query('perPage') perPage = '10') {
     const auth0Id = req.user.auth0Id;
     const p = await this.rec.recommendForUser(auth0Id, { page: Number(page), perPage: Number(perPage) });
@@ -42,6 +43,7 @@ export class JobsController {
 
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Post(':id/cover-letter')
+  @Roles('USER')
   async coverLetter(@Req() req, @Param('id') id: string) {
     const auth0Id = req.user.auth0Id;    
     const job = await this.prisma.job.findUnique({ where: { id } });
