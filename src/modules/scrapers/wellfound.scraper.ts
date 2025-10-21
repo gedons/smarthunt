@@ -48,11 +48,11 @@ export async function runWellfound(prisma: PrismaService) {
           description: j.description,
           tags: j.tags || [],
           salary: j.salary,
-          source: 'WELLFOUND',
+          source: 'WEWORKREMOTELY',
         },
       });
-      saved.push(res.url);
-      console.log('[Wellfound] saved:', res.url);
+      saved.push(res.id);
+      console.log('[Wellfound] saved:', res.id);
     } catch (err) {
       console.error('[Wellfound] prisma upsert error for', j.url, err);
     }
@@ -61,7 +61,8 @@ export async function runWellfound(prisma: PrismaService) {
   console.log(
     `[Wellfound] finished. saved=${saved.length}. took=${Date.now() - start}ms`,
   );
-  return { count: saved.length, saved };
+  return { count: saved.length, insertedIds: saved };
+
 }
 
 export function parseWellfoundHtml(html: string) {

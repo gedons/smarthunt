@@ -45,7 +45,7 @@ export class JobsController {
   @Post(':id/cover-letter')
   @Roles('USER')
   async coverLetter(@Req() req, @Param('id') id: string) {
-    const auth0Id = req.user.auth0Id;    
+    const auth0Id = req.user.auth0Id;
     const job = await this.prisma.job.findUnique({ where: { id } });
     const user = await this.prisma.user.findUnique({ where: { auth0Id } });
     if (!job || !user) throw new Error('Not found');
@@ -58,7 +58,7 @@ export class JobsController {
     ${(user.resumeText || '').slice(0, 4000)}
 
     Limit to 300-500 words, emphasise achievements relevant to this job.`;
-        const letter = await this.gemini.generate(prompt, { maxTokens: 800 });
-        return { coverLetter: letter };
+    const letter = await this.gemini.generate(prompt, { maxTokens: 2048 });
+    return { coverLetter: letter };
   }
 }

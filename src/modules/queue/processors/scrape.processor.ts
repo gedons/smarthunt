@@ -4,9 +4,8 @@ import { Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import { PrismaService } from '../../../config/prisma.service';
 import { runScraperForSource } from '../../scrapers';
-import { JobSource } from '@prisma/client';
-import { runWeWorkRemotely } from '../../scrapers/weworkremotely.scraper';
-import { runWellfound } from '../../scrapers/wellfound.scraper';
+import { QueueService } from '../../queue/queue.service';
+import { EmbeddingsService } from '../../ai/embeddings.service';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const connection = new IORedis(REDIS_URL, {
@@ -19,59 +18,92 @@ const connection = new IORedis(REDIS_URL, {
 export class ScrapeProcessor implements OnModuleInit {
   private readonly logger = new Logger(ScrapeProcessor.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly queueService: QueueService,
+    private readonly embeddingsService: EmbeddingsService,
+  ) {}
 
   onModuleInit() {
-    this.logger.log(
-      `ScrapeProcessor initializing (connecting to ${REDIS_URL})`,
-    );
+    this.logger.log(`ScrapeProcessor initializing (connecting to ${REDIS_URL})`);
 
     const worker = new Worker(
       'jobs-queue',
       async (job) => {
-        this.logger.log(
-          `Worker handler invoked — job id=${job.id} name=${job.name}`,
-        );
+        this.logger.log(`Worker handler invoked — job id=${job.id} name=${job.name}`);
+
         try {
+          // --- SCRAPE job ---
           if (job.name === 'scrape') {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            const { source } = job.data;
+            const { source } = job.data as { source: string };
             this.logger.log(`Worker: scraping source ${source}`);
 
-            // ✅ Call correct scraper and pass Prisma
-            let result;
-            if (source === 'WEWORKREMOTELY') {
-              result = await runWeWorkRemotely(this.prisma);
-            } else if (source === 'WELLFOUND') {
-              result = await runWellfound(this.prisma);
+            const start = Date.now();
+            // scrapers should return { count, insertedIds } or { count, saved } (urls or ids)
+            const result = await runScraperForSource(source, this.prisma);
+            this.logger.log(`Worker: finished scraping ${source} -> ${JSON.stringify(result)}`);
+
+            // Normalize returned identifiers
+            let rawSaved: string[] = [];
+            if (Array.isArray(result?.insertedIds)) rawSaved = result.insertedIds;
+            else if (Array.isArray(result?.insertedIds)) rawSaved = result.insertedIds;
+            else rawSaved = [];
+
+            // if rawSaved are URLs, resolve to ids; otherwise assume they are ids
+            let idList: string[] = [];
+            if (rawSaved.length === 0) {
+              this.logger.log('No new items to embed from scrape result.');
             } else {
-              result = await runScraperForSource(source, this.prisma);
+              const looksLikeUrl = rawSaved[0].startsWith('http');
+              if (looksLikeUrl) {
+                // resolve urls -> ids
+                const rows = await this.prisma.job.findMany({
+                  where: { url: { in: rawSaved } },
+                  select: { id: true },
+                });
+                idList = rows.map((r) => r.id);
+              } else {
+                idList = rawSaved;
+              }
+
+              if (idList.length > 0) {
+                this.logger.log(`Enqueuing embed job for ${idList.length} jobs`);
+                await this.queueService.addJob('embed', { jobIds: idList });
+              } else {
+                this.logger.log('No job IDs resolved for embedding.');
+              }
             }
 
-            this.logger.log(
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-              `Worker: finished scraping ${source} — ${result.count} jobs saved.`,
-            );
-
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-            return result;
-          } else {
-            this.logger.warn(`Worker: unknown job name "${job.name}"`);
+            const duration = Date.now() - start;
+            return { scraped: result?.count ?? 0, enqueuedForEmbedding: idList.length, durationMs: duration };
           }
+
+          // --- EMBED job ---
+          if (job.name === 'embed') {
+            const { jobIds } = job.data as { jobIds: string[] };
+            this.logger.log(`Worker: embedding ${Array.isArray(jobIds) ? jobIds.length : 0} jobs`);
+            if (!Array.isArray(jobIds) || jobIds.length === 0) {
+              this.logger.warn('Embed job had no jobIds');
+              return { embedded: 0 };
+            }
+
+            const res = await this.embeddingsService.embedJobsByIds(jobIds);
+            this.logger.log(`Worker: embed job finished -> ${JSON.stringify(res)}`);
+            return res;
+          }
+
+          this.logger.warn(`Worker: unknown job name "${job.name}"`);
+          return;
         } catch (err) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           const msg = (err && (err as Error).message) ?? String(err);
-          this.logger.error(
-            `Worker error processing job ${job.id}: ${msg}`,
-            err,
-          );
+          this.logger.error(`Worker error processing job ${job.id}: ${msg}`, err);
           throw err;
         }
       },
       { connection },
     );
 
-    // --- Event listeners ---
+    // Event hooks (same as before)
     worker.on('active', (job) => {
       this.logger.log(`Job ${job.id} is active`);
     });
@@ -88,8 +120,6 @@ export class ScrapeProcessor implements OnModuleInit {
       this.logger.error(`Worker-level error: ${msg}`, err);
     });
 
-    this.logger.log(
-      'ScrapeProcessor worker started and listening on queue "jobs-queue".',
-    );
+    this.logger.log('ScrapeProcessor worker started and listening on queue "jobs-queue".');
   }
 }

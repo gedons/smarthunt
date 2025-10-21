@@ -51,17 +51,18 @@ export async function runWeWorkRemotely(prisma: PrismaService) {
           source: 'WEWORKREMOTELY',
         },
       });
-      saved.push(res.url);
-      console.log('[WWR] saved:', res.url);
+      saved.push(res.id); 
+      console.log('[Weworkremotely] saved:', res.id);
+
     } catch (err) {
-      console.error('[WWR] prisma upsert error for', j.url, err);
+      console.error('[Weworkremotely] prisma upsert error for', j.url, err);
     }
   }
 
   console.log(
     `[WWR] finished. saved=${saved.length}. took=${Date.now() - start}ms`,
   );
-  return { count: saved.length, saved };
+  return { count: saved.length, insertedIds: saved };
 }
 
 export function parseWeWorkRemotelyHtml(html: string): ParsedJob[] {

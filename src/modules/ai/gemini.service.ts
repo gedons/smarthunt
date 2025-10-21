@@ -97,9 +97,29 @@ export class GeminiService {
     const payload = {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
-        maxOutputTokens: opts.maxTokens ?? 512,
-        temperature: opts.temperature ?? 0.0,
+        maxOutputTokens: opts.maxTokens ?? 2048,
+        temperature: opts.temperature ?? 0.7,
+        topP: 0.95,
+        topK: 40,
       },
+      safetySettings: [
+        {
+          category: 'HARM_CATEGORY_HARASSMENT',
+          threshold: 'BLOCK_NONE',
+        },
+        {
+          category: 'HARM_CATEGORY_HATE_SPEECH',
+          threshold: 'BLOCK_NONE',
+        },
+        {
+          category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+          threshold: 'BLOCK_NONE',
+        },
+        {
+          category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
+          threshold: 'BLOCK_NONE',
+        },
+      ],
     };
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const json = await this.postWithRetry(this.genUrl, payload);
@@ -107,9 +127,10 @@ export class GeminiService {
     if (json?.candidates?.[0]?.content?.parts?.[0]?.text) {
       return json.candidates[0].content.parts[0].text;
     }
-    if (json?.output_text) return json.output_text;
     if (json?.candidates?.[0]?.text) return json.candidates[0].text;
-    return JSON.stringify(json);
+    if (json?.text) return json.text;
+    this.logger.error('No text in response', JSON.stringify(json).slice(0, 400));
+    throw new Error('No text generated from Gemini');
   }
 
   // Helper: POST with retry/backoff

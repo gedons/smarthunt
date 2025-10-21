@@ -1,20 +1,17 @@
+// src/modules/ai/recommendation.service.ts
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { EmbeddingsService } from './embeddings.service';
-
-function dot(a: number[], b: number[]) { return a.reduce((s, v, i) => s + v * (b[i] ?? 0), 0); }
-function norm(a: number[]) { return Math.sqrt(a.reduce((s, v) => s + v * v, 0)); }
-function cosine(a: number[], b: number[]) {
-  const n = norm(a) * norm(b);
-  return n === 0 ? 0 : dot(a, b) / n;
-}
 
 @Injectable()
 export class RecommendationService {
   constructor(private prisma: PrismaService, private embedService: EmbeddingsService) {}
 
-  // get top recommendations for a user
-  async recommendForUser(auth0Id: string, { page = 0, perPage = 10 }: { page?: number; perPage?: number } = {}) {
+  // auth0Id -> top-k jobs
+  async recommendForUser(auth0Id: string, opts: { page?: number; perPage?: number } = {}) {
+    const page = opts.page ?? 0;
+    const perPage = opts.perPage ?? 10;
+
     const user = await this.prisma.user.findUnique({ where: { auth0Id } });
     if (!user) throw new Error('User not found');
 
@@ -24,24 +21,25 @@ export class RecommendationService {
       userVector = await this.embedService.embedUser(auth0Id);
     }
 
-    // fetch candidate job embeddings (limit to 2000 for speed)
-    const candidates = await this.prisma.jobEmbedding.findMany({
-      take: 2000, 
-      include: { job: true },
-    });
+    // build a vector literal for SQL: '[0.1,0.2,...]'
+    const vecLiteral = '[' + userVector.map((v) => Number(v).toFixed(12)).join(',') + ']';
 
-    // score and sort
-    const scored = candidates.map((c) => {
-      const score = cosine(userVector!, c.embedding);
-      return { job: c.job, score };
-    });
+    const sql = `
+      SELECT jb."jobId", j.title, jb.embedding_vector <=> '${vecLiteral}' AS distance
+      FROM "JobEmbedding" jb
+      JOIN "Job" j ON jb."jobId" = j.id
+      ORDER BY distance ASC
+      LIMIT $1 OFFSET $2
+    `;
+    // NOTE: prisma.$queryRawUnsafe used below; ensure vecLiteral is numeric-only string (we control it) to avoid injection
+    const rows: Array<{ jobId: string; title: string; distance: number }> = await this.prisma.$queryRawUnsafe(sql, perPage, page * perPage);
 
-    scored.sort((a, b) => b.score - a.score);
+    // fetch full jobs for returned ids (or join earlier as shown)
+    const jobIds = rows.map(r => r.jobId);
+    const jobs = await this.prisma.job.findMany({ where: { id: { in: jobIds } } });
 
-    // pagination
-    const start = page * perPage;
-    const slice = scored.slice(start, start + perPage);
-
-    return slice.map((s) => ({ job: s.job, score: s.score }));
+    // re-order jobs to match rows order
+    const jobsById = new Map(jobs.map(j => [j.id, j]));
+    return rows.map(r => ({ job: jobsById.get(r.jobId), score: 1 - r.distance }));
   }
 }
